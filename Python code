@@ -1,0 +1,228 @@
+import bpy
+import pathlib
+import csv
+import math
+import mathutils
+######
+
+#this program makes 3d graphs in blender. It graphs 2 car's speeds and compares them.
+
+#1. Get the CSV files and make the speeds into arrays
+#2. Make the arrays the same length 
+#3. Graph the arrays
+
+#make sure the csv files are in the same folder as the .blend file
+
+csvFile1 = 'Driver_4_Qualifying_2.csv' #file names
+csvFile2 = 'Driver_5_Qualifying_1.csv'
+speedCol = 1
+
+# File paths
+file_loc = pathlib.Path(__file__).parent.resolve()
+folder = pathlib.Path(file_loc).parent.resolve()
+driver1Lap = pathlib.Path(folder).joinpath(csvFile1)
+driver2Lap = pathlib.Path(folder).joinpath(csvFile2)
+
+data_coll = bpy.data.collections.get("Collection") #store the scene in a variable
+if not data_coll: #if theres no scene, make one
+    data_coll = bpy.data.collections.new("Collection") 
+    bpy.context.scene.collection.children.link(data_coll)
+
+
+for ob in list(data_coll.objects): #delete any existing objects
+    bpy.data.objects.remove(ob, do_unlink=True)
+
+def makeDriverArray(dataSet, lapStartRow, lapEndRow):
+    speedArray = []
+    data = dataSet
+    startingRow = lapStartRow
+    endingRow = lapEndRow
+    counter = startingRow
+    # Read CSV and apply animation
+  
+    with open(data, 'r') as csvfile:
+        datareader = csv.reader(csvfile)
+        
+        for _ in range(startingRow):  # Skip to the lap start
+            next(datareader)
+            
+        #frame = 1  # Start at frame 1
+        for row in datareader:
+            if counter == endingRow: #end of lap data
+                break
+            try:
+                counter = counter + 1
+                car_speed = float(row[speedCol])
+                #distanceDriven = float(row[37])
+                #speed = (car_speed * 1000 / 3600) / 20  # Convert km/h to Blender units per frame
+                
+            except ValueError:
+                continue  # Skip rows with invalid data
+            
+            speedArray.append(car_speed)
+          
+            
+            #frame += 1
+    return speedArray
+
+def modelArray(speedArray,name):
+    
+    new_mesh = bpy.data.meshes.new('data')
+    new_object = bpy.data.objects.new('data_graph'+name, new_mesh)
+    data_coll.objects.link(new_object)
+    
+    vertices = []
+    edges = []
+    faces = []
+    height = 0.0
+    # Read CSV and apply animation
+    yValue=0
+    
+    for i in speedArray:
+        vertices.append((0,yValue , i))
+        yValue = yValue +1
+            
+        
+    for i in range(len(vertices) - 1):
+        edges.append((i, i + 1))
+        
+        
+    # Update the mesh at the end with the collected vertices
+    new_mesh.from_pydata(vertices, edges, faces)
+    new_mesh.update()
+    
+def scaleArray(bigArray, shrinkToSize):
+    scaledLapArray=[]
+    numberOfRowsToRemove = len(bigArray)-shrinkToSize
+    removeRowEvery = len(bigArray)/numberOfRowsToRemove
+    
+    for t in range(len(bigArray)):
+        if t % int(removeRowEvery) != 0:  
+            scaledLapArray.append(bigArray[t])
+
+    #go through the points
+    
+    return scaledLapArray
+
+def compareArrays(speedArray1, speedArray2):
+    
+    minLength = 0
+    speedDifference = 0.0
+    differenceArray = []
+    
+#    print(len(speedArray1))
+  #  print(len(speedArray2))
+    if len(speedArray1)<len(speedArray2):
+        minLength = len(speedArray1)
+    else:
+        minLength = len(speedArray2)
+        
+    for l in range(minLength):
+        speedDifference = speedArray1[l]-speedArray2[l]
+        
+        speedDifference = speedDifference*4
+        differenceArray.append(speedDifference)
+        
+    
+    return differenceArray
+    
+def modelTrackLayout(gpsLatitude, gpsLongitude, diffArray):
+    new_mesh = bpy.data.meshes.new('data')
+    new_object = bpy.data.objects.new('data_graph', new_mesh)
+    data_coll.objects.link(new_object)
+    
+    vertices = []
+    edges = []
+    faces = []
+
+    # Read CSV and apply animation
+    
+    
+    for i in range(len(gpsLatitude)):
+        vertices.append((gpsLatitude[i],gpsLongitude[i],diffArray[i]))
+       
+            
+        
+    for i in range(len(vertices) - 1):
+        edges.append((i, i + 1))
+        
+        
+    # Update the mesh at the end with the collected vertices
+    new_mesh.from_pydata(vertices, edges, faces)
+    new_mesh.update()
+    
+    bpy.context.view_layer.objects.active = new_object
+    new_object.select_set(True)
+
+    # Set the origin of the object to its geometry bounds
+    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+    new_object.scale = (50000.0, 50000.0, 1.0)
+    # Deselect the object if needed
+    new_object.select_set(False)
+    
+    
+def gpsToArray(dataSet, lapStartRow, lapEndRow):
+    latitudeArray = []
+    longitudeArray = []
+    data = dataSet
+    startingRow = lapStartRow
+    endingRow = lapEndRow
+    counter = startingRow
+    # Read CSV and apply animation
+  
+    with open(data, 'r') as csvfile:
+        datareader = csv.reader(csvfile)
+        
+        for _ in range(startingRow):  # Skip to the lap start
+            next(datareader)
+            
+        #frame = 1  # Start at frame 1
+        for row in datareader:
+            if counter == endingRow-1: #end of lap data
+                break
+            try:
+                counter = counter + 1
+                carLat = float(row[12])
+                carLon = float(row[13])
+            except ValueError:
+                continue  # Skip rows with invalid data
+            
+            latitudeArray.append(carLat)
+            longitudeArray.append(carLon)
+          
+            
+            #frame += 1
+    return latitudeArray, longitudeArray
+    
+    
+driver1Array = makeDriverArray(driver1Lap, 5773,7166) #1393 frames
+driver2Array = makeDriverArray(driver2Lap, 8857,10234) #1377 frames
+
+newDriver1Array = scaleArray(driver1Array,1377)
+
+modelArray(newDriver1Array,"Driver1")
+modelArray(driver2Array,"Driver2")
+
+
+
+speedDiffArray = compareArrays(newDriver1Array, driver2Array) #up is advantage to 1, down is advantage to 2.
+# 0 means they are equal speed
+
+
+modelArray(speedDiffArray,"Difference")
+
+
+
+xArray, yArray = gpsToArray(driver2Lap,8857,10234)
+
+modelTrackLayout(xArray, yArray,speedDiffArray)
+
+print(len(speedDiffArray))
+print(len(xArray))
+
+
+# solution is to compress driver1 data into the length of driver2
+#driver1 is supposed to be faster. however, his animation plays slower due to there being more data
+
+# driver 1: 288.3. 1:09.1
+#driver 2: 442.35 1:09.6
